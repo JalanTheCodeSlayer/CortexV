@@ -1,12 +1,5 @@
-import streamlit as st
-import streamlit.components.v1 as components
-import pandas as pd
-import openai
-import json
-import re
-import time
-from typing import Optional, List, Dict, Any
-import subprocess
-import socket
-import requests
-from bs4 import BeautifulSoup
+streamlit
+pandas
+openai
+requests
+beautifulsoup4
