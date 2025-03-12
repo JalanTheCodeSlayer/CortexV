@@ -18,7 +18,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for Styling
+# Custom CSS for Styling (Google Fonts import removed for testing)
 CUSTOM_CSS = """
 <style>
 /* Hide header icons */
@@ -75,9 +75,8 @@ CUSTOM_CSS = """
 }
 
 /* Typography */
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
 body, .markdown-text-container {
-    font-family: 'Orbitron', sans-serif;
+    font-family: sans-serif;
     color: #333333;
     font-weight: 400;
     line-height: 1.6;
@@ -115,7 +114,7 @@ h2 {
     border: none;
     padding: 12px 30px;
     font-size: 16px;
-    font-family: 'Orbitron', sans-serif;
+    font-family: sans-serif;
     border-radius: 50px;
     box-shadow: 0 2px 10px rgba(138, 43, 226, 0.2);
     transition: all 0.3s ease;
@@ -145,8 +144,9 @@ h2 {
 
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-# API Configuration using secrets
-openai.api_key = st.secrets["openai"]["OPENAI_API_KEY"]
+# API Configuration
+OPENAI_API_KEY = "jina_19bae2a4d32e449189da4ce64c75d788DYhR7j6rVLfP4g82NBkUQlcoEcJu"
+openai.api_key = OPENAI_API_KEY
 openai.api_base = "https://deepsearch.jina.ai/v1"
 
 # Company Search Prompt
