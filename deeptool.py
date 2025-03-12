@@ -145,10 +145,9 @@ h2 {
 
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-# API Configuration
-OPENAI_API_KEY ="jina_19bae2a4d32e449189da4ce64c75d788DYhR7j6rVLfP4g82NBkUQlcoEcJu"
-openai.api_key = OPENAI_API_KEY
-openai.api_base ="https://deepsearch.jina.ai/v1"
+# API Configuration using secrets
+openai.api_key = st.secrets["openai"]["OPENAI_API_KEY"]
+openai.api_base = "https://deepsearch.jina.ai/v1"
 
 # Company Search Prompt
 COMPANY_SEARCH_PROMPT = (
