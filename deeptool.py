@@ -142,12 +142,13 @@ h2 {
 }
 </style>
 """
+
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 # API Configuration
-OPENAI_API_KEY = "jina_19bae2a4d32e449189da4ce64c75d788DYhR7j6rVLfP4g82NBkUQlcoEcJu"
+OPENAI_API_KEY ="jina_19bae2a4d32e449189da4ce64c75d788DYhR7j6rVLfP4g82NBkUQlcoEcJu"
 openai.api_key = OPENAI_API_KEY
-openai.api_base = "https://deepsearch.jina.ai/v1"
+openai.api_base ="https://deepsearch.jina.ai/v1"
 
 # Company Search Prompt
 COMPANY_SEARCH_PROMPT = (
@@ -160,70 +161,79 @@ COMPANY_SEARCH_PROMPT = (
 # API Interaction Functions
 def deep_search(prompt: str) -> Optional[str]:
     """Send a prompt to the Jina DeepSearch API and return the response content."""
-    st.write("[DEBUG] Starting deep_search with prompt:", prompt)
     try:
-        with st.spinner("Fetching company data..."):
-            time.sleep(6)  # simulate wait time
-            response = openai.ChatCompletion.create(
-                model="jina-deepsearch-v1",
-                messages=[{"role": "user", "content": prompt}]
-            )
-        st.write("[DEBUG] Raw API response received:", response)
+        time.sleep(6)
+        response = openai.ChatCompletion.create(
+            model="jina-deepsearch-v1",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        # Debug: print the raw API response
+        st.write("Raw API response:", response)
         return response["choices"][0]["message"]["content"]
     except Exception as e:
-        st.error(f"[DEBUG] API Error in deep_search: {str(e)}")
+        st.error(f"API Error: {str(e)}")
         return None
 
 def parse_json_response(response: str) -> Optional[List[Dict[str, Any]]]:
     """Parse JSON from the API response with retry logic, handling code blocks or raw JSON."""
-    st.write("[DEBUG] Starting parse_json_response")
     if not isinstance(response, str):
-        st.warning("[DEBUG] Invalid response format: Response is not a string")
+        st.warning("Invalid response format: Response is not a string")
         return None
 
     code_block_pattern = r"```json\s*(.*?)\s*```"
     attempts = 0
     max_attempts = 3
+    
     while attempts < max_attempts:
         try:
             match = re.search(code_block_pattern, response, re.DOTALL)
             json_str = match.group(1) if match else response
             parsed_data = json.loads(json_str)
-            st.write("[DEBUG] Parsed JSON data:", parsed_data)
+            # Debug: print parsed JSON data
+            st.write("Parsed JSON data:", parsed_data)
             return parsed_data
+            
         except json.JSONDecodeError as e:
             attempts += 1
-            st.warning(f"[DEBUG] Attempt {attempts} failed to parse JSON: {str(e)}")
+            st.warning(f"Attempt {attempts} failed to parse JSON: {str(e)}")
             if attempts == max_attempts:
-                st.error("[DEBUG] Failed to parse JSON after 3 attempts. Please try again.")
+                st.error("Failed to parse JSON after 3 attempts. Please try again.")
                 return None
-            time.sleep(1)
+            time.sleep(1)  # Brief delay before retrying
         except Exception as e:
+            st.warning(f"Unexpected error on attempt {attempts + 1}: {str(e)}")
             attempts += 1
-            st.warning(f"[DEBUG] Unexpected error on attempt {attempts}: {str(e)}")
             if attempts == max_attempts:
-                st.error("[DEBUG] Failed to parse JSON after 3 attempts due to unexpected errors.")
+                st.error("Failed to parse JSON after 3 attempts due to unexpected errors.")
                 return None
             time.sleep(1)
 
 # Vulnerability Scanning Functions
 def nmap_scan(domain: str) -> Dict[str, Any]:
     """Perform a basic Nmap scan on the domain."""
-    st.write(f"[DEBUG] Starting nmap_scan for domain: {domain}")
     try:
+        # Resolve domain to IP
         ip = socket.gethostbyname(domain)
-        st.write(f"[DEBUG] Resolved {domain} to IP: {ip}")
+        # Basic Nmap scan for open ports (-F for fast scan)
         result = subprocess.run(['nmap', '-F', ip], capture_output=True, text=True, timeout=60)
-        st.write(f"[DEBUG] nmap output for {domain} ({ip}):", result.stdout)
+        
+        # Debug: log the raw nmap output
+        st.write(f"Nmap output for {domain} ({ip}):", result.stdout)
+        
         open_ports = []
         vulnerabilities = []
+        
+        # Parse Nmap output
         for line in result.stdout.split('\n'):
             if '/tcp' in line and 'open' in line:
                 port = line.split('/')[0]
                 service = line.split('open')[1].strip()
                 open_ports.append({'port': port, 'service': service})
+                
+                # Basic vulnerability check based on common ports
                 if port in ['21', '22', '23', '445']:
                     vulnerabilities.append(f"Potentially vulnerable service on port {port}: {service}")
+        
         return {
             'ip': ip,
             'open_ports': open_ports,
@@ -231,7 +241,7 @@ def nmap_scan(domain: str) -> Dict[str, Any]:
             'error': None
         }
     except Exception as e:
-        st.error(f"[DEBUG] Error during nmap_scan for {domain}: {str(e)}")
+        st.error(f"Error during nmap_scan for {domain}: {str(e)}")
         return {
             'ip': None,
             'open_ports': [],
@@ -241,27 +251,34 @@ def nmap_scan(domain: str) -> Dict[str, Any]:
 
 def check_http_vulnerabilities(domain: str) -> List[str]:
     """Check for basic HTTP-related vulnerabilities."""
-    st.write(f"[DEBUG] Starting check_http_vulnerabilities for domain: {domain}")
     vulnerabilities = []
     try:
+        # Try both HTTP and HTTPS
         for protocol in ['http', 'https']:
             url = f"{protocol}://{domain}"
-            st.write(f"[DEBUG] Checking URL: {url}")
             try:
                 response = requests.get(url, timeout=5)
+                
+                # Check for outdated server headers
                 server = response.headers.get('Server', '')
                 if 'Apache/2.2' in server or 'IIS/6' in server:
                     vulnerabilities.append(f"Outdated server detected: {server}")
+                
+                # Check if HTTPS is not enforced
                 if protocol == 'http' and response.status_code == 200:
                     vulnerabilities.append("HTTP accessible - no HTTPS enforcement")
+                
+                # Basic XSS check
                 soup = BeautifulSoup(response.text, 'html.parser')
                 if soup.find('input', {'name': 'q'}) and not soup.find('meta', {'http-equiv': 'Content-Security-Policy'}):
                     vulnerabilities.append("Potential XSS vulnerability - no CSP header")
+                    
             except requests.RequestException as e:
-                st.write(f"[DEBUG] HTTP request error for {url}: {str(e)}")
+                st.write(f"HTTP request error for {url}: {str(e)}")
                 continue
     except Exception as e:
-        vulnerabilities.append(f"[DEBUG] HTTP check error: {str(e)}")
+        vulnerabilities.append(f"HTTP check error: {str(e)}")
+    
     return vulnerabilities
 
 # Particle Spinner HTML
@@ -322,7 +339,7 @@ PARTICLE_SPINNER_HTML = """
 # HTML Table Generation
 def table_to_iframe_html(df: pd.DataFrame, scan_results: Dict[str, Dict]) -> str:
     """Convert DataFrame and scan results to HTML table."""
-    st.write("[DEBUG] Generating HTML table from DataFrame and scan results")
+    # Create a copy with original columns
     display_df = df.copy()
     display_df['open_ports'] = display_df['domain'].apply(
         lambda x: ', '.join([p['port'] for p in scan_results.get(x, {}).get('open_ports', [])]) or 'None'
@@ -330,8 +347,12 @@ def table_to_iframe_html(df: pd.DataFrame, scan_results: Dict[str, Dict]) -> str
     display_df['vulnerabilities'] = display_df['domain'].apply(
         lambda x: '<br>'.join(scan_results.get(x, {}).get('vulnerabilities', [])) or 'None'
     )
+    
     table_html = display_df.to_html(index=False, escape=False)
+    
+    # Debug: output the HTML table string
     st.code(table_html, language="html")
+    
     return f"""
 <!DOCTYPE html>
 <html>
@@ -369,7 +390,6 @@ def table_to_iframe_html(df: pd.DataFrame, scan_results: Dict[str, Dict]) -> str
 
 # Main Application Logic
 def main():
-    st.write("[DEBUG] App started")
     st.markdown('<div class="main-content">', unsafe_allow_html=True)
     
     title_ph = st.empty()
@@ -380,7 +400,6 @@ def main():
     
     with button_ph:
         if st.button("Scan Domain"):
-            st.write("[DEBUG] Scan Domain button pressed")
             title_ph.empty()
             button_ph.empty()
             
@@ -392,52 +411,52 @@ def main():
                     scrolling=False
                 )
             
-            # Use a spinner for the deep_search call
-            with st.spinner("Fetching company data..."):
-                response = deep_search(COMPANY_SEARCH_PROMPT)
-            st.write("[DEBUG] deep_search response:", response)
-            
+            # Get company data
+            response = deep_search(COMPANY_SEARCH_PROMPT)
             if response:
                 companies = parse_json_response(response)
                 if companies:
-                    st.write("[DEBUG] Parsed companies:", companies)
+                    # Debug: output the parsed companies list
+                    st.write("Parsed companies:", companies)
+                    
                     df = pd.DataFrame(companies)
-                    st.write("[DEBUG] DataFrame preview:", df)
+                    st.write("DataFrame preview:", df)
                     required_cols = ['sector', 'company_name', 'domain']
                     if not all(col in df.columns for col in required_cols):
-                        st.error("[DEBUG] Data missing required columns")
+                        st.error("Data missing required columns")
                     else:
-                        # Initialize progress bar for vulnerability scans
-                        progress_bar = st.progress(0)
+                        # Perform vulnerability scans
                         scan_results = {}
-                        total_domains = len(df['domain'])
-                        with st.spinner("Scanning for vulnerabilities..."):
-                            for idx, domain in enumerate(df['domain']):
-                                st.write(f"[DEBUG] Scanning domain: {domain}")
-                                nmap_result = nmap_scan(domain)
-                                st.write(f"[DEBUG] nmap result for {domain}:", nmap_result)
-                                http_vulns = check_http_vulnerabilities(domain)
-                                st.write(f"[DEBUG] HTTP vulnerabilities for {domain}:", http_vulns)
-                                nmap_result['vulnerabilities'].extend(http_vulns)
-                                scan_results[domain] = nmap_result
-                                progress_bar.progress((idx + 1) / total_domains)
-                        st.write("[DEBUG] Complete scan_results:", scan_results)
-                        progress_bar.empty()
+                        with spinner_ph:
+                            st.write("Scanning for vulnerabilities...")
+                        for domain in df['domain']:
+                            st.write(f"Scanning domain: {domain}")
+                            nmap_result = nmap_scan(domain)
+                            st.write(f"nmap result for {domain}:", nmap_result)
+                            http_vulns = check_http_vulnerabilities(domain)
+                            nmap_result['vulnerabilities'].extend(http_vulns)
+                            scan_results[domain] = nmap_result
+                        
+                        # Debug: output complete scan_results
+                        st.write("Complete scan_results:", scan_results)
+                        
                         spinner_ph.empty()
                         table_html = table_to_iframe_html(df, scan_results)
-                        st.write("[DEBUG] Rendering HTML table...")
+                        # Debug: Check if the HTML is generated and then display it
+                        st.write("Rendering HTML table...")
                         components.html(table_html, height=600, scrolling=True)
                 else:
-                    st.error("[DEBUG] Unable to parse company data.")
+                    spinner_ph.empty()
+                    st.error("Unable to parse company data.")
             else:
-                st.error("[DEBUG] Failed to fetch data. Please check your connection.")
+                spinner_ph.empty()
+                st.error("Failed to fetch data. Please check your connection.")
         
     st.markdown(
         '<div class="footer">CORTEX V | Powered by Cortex V © 2025</div>',
         unsafe_allow_html=True
     )
     st.markdown('</div>', unsafe_allow_html=True)
-    st.write("[DEBUG] App execution complete")
 
 if __name__ == "__main__":
     main()
