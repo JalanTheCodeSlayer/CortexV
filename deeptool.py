@@ -32,7 +32,7 @@ CUSTOM_CSS = """
     min-height: 100vh;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: start;
     align-items: center;
     text-align: center;
     padding: 20px;
@@ -145,11 +145,11 @@ h2 {
 
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-# API Configuration using secrets
-openai.api_key = st.secrets["openai"]["OPENAI_API_KEY"]
-openai.api_base = "https://deepsearch.jina.ai/v1"
+# OpenAI API Key (Replace or manage via st.secrets)
+OPENAI_API_KEY = "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"  # Replace or manage securely"
+openai.api_key = OPENAI_API_KEY
 
-# Company Search Prompt
+# Prompt
 COMPANY_SEARCH_PROMPT = (
     "Find 5 companies domains: fintech firms, companies with supply chain vulnerabilities, "
     "industries frequently targeted by ransomware (e.g., government agencies, manufacturing, healthcare, small businesses), "
@@ -157,141 +157,94 @@ COMPANY_SEARCH_PROMPT = (
     "Provide a JSON list where each item is a dictionary with the keys: 'sector', 'company_name' (if available), and 'domain'."
 )
 
-# API Interaction Functions
 def deep_search(prompt: str) -> Optional[str]:
-    """Send a prompt to the Jina DeepSearch API and return the response content."""
     try:
-        time.sleep(6)
+        time.sleep(2)
         response = openai.ChatCompletion.create(
-            model="jina-deepsearch-v1",
-            messages=[{"role": "user", "content": prompt}]
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
         )
-        # Debug: print the raw API response
-        st.write("Raw API response:", response)
         return response["choices"][0]["message"]["content"]
     except Exception as e:
-        st.error(f"API Error: {str(e)}")
+        st.error(f"API Error: {e}")
         return None
 
 def parse_json_response(response: str) -> Optional[List[Dict[str, Any]]]:
-    """Parse JSON from the API response with retry logic, handling code blocks or raw JSON."""
-    if not isinstance(response, str):
-        st.warning("Invalid response format: Response is not a string")
-        return None
-
-    code_block_pattern = r"```json\s*(.*?)\s*```"
-    attempts = 0
-    max_attempts = 3
+    pattern = r"```json\s*(.*?)\s*```"
+    match = re.search(pattern, response, re.DOTALL)
+    if match:
+        response_text = match.group(1)
+    else:
+        response_text = response
     
-    while attempts < max_attempts:
+    for _ in range(3):
         try:
-            match = re.search(code_block_pattern, response, re.DOTALL)
-            json_str = match.group(1) if match else response
-            parsed_data = json.loads(json_str)
-            # Debug: print parsed JSON data
-            st.write("Parsed JSON data:", parsed_data)
-            return parsed_data
-            
-        except json.JSONDecodeError as e:
-            attempts += 1
-            st.warning(f"Attempt {attempts} failed to parse JSON: {str(e)}")
-            if attempts == max_attempts:
-                st.error("Failed to parse JSON after 3 attempts. Please try again.")
-                return None
-            time.sleep(1)  # Brief delay before retrying
-        except Exception as e:
-            st.warning(f"Unexpected error on attempt {attempts + 1}: {str(e)}")
-            attempts += 1
-            if attempts == max_attempts:
-                st.error("Failed to parse JSON after 3 attempts due to unexpected errors.")
-                return None
+            return json.loads(response_text)
+        except:
             time.sleep(1)
+    return None
 
-# Vulnerability Scanning Functions
 def nmap_scan(domain: str) -> Dict[str, Any]:
-    """Perform a basic Nmap scan on the domain."""
     try:
-        # Resolve domain to IP
         ip = socket.gethostbyname(domain)
-        # Basic Nmap scan for open ports (-F for fast scan)
         result = subprocess.run(['nmap', '-F', ip], capture_output=True, text=True, timeout=60)
-        
-        # Debug: log the raw nmap output
-        st.write(f"Nmap output for {domain} ({ip}):", result.stdout)
-        
         open_ports = []
         vulnerabilities = []
-        
-        # Parse Nmap output
+
         for line in result.stdout.split('\n'):
             if '/tcp' in line and 'open' in line:
                 port = line.split('/')[0]
                 service = line.split('open')[1].strip()
                 open_ports.append({'port': port, 'service': service})
-                
-                # Basic vulnerability check based on common ports
                 if port in ['21', '22', '23', '445']:
-                    vulnerabilities.append(f"Potentially vulnerable service on port {port}: {service}")
-        
+                    vulnerabilities.append(
+                        f"Potentially vulnerable service on port {port}: {service}"
+                    )
         return {
-            'ip': ip,
-            'open_ports': open_ports,
-            'vulnerabilities': vulnerabilities,
-            'error': None
+            "ip": ip,
+            "open_ports": open_ports,
+            "vulnerabilities": vulnerabilities,
+            "error": None,
         }
     except Exception as e:
-        st.error(f"Error during nmap_scan for {domain}: {str(e)}")
         return {
-            'ip': None,
-            'open_ports': [],
-            'vulnerabilities': [],
-            'error': str(e)
+            "ip": None,
+            "open_ports": [],
+            "vulnerabilities": [],
+            "error": str(e),
         }
 
 def check_http_vulnerabilities(domain: str) -> List[str]:
-    """Check for basic HTTP-related vulnerabilities."""
-    vulnerabilities = []
+    vuln = []
     try:
-        # Try both HTTP and HTTPS
-        for protocol in ['http', 'https']:
+        for protocol in ["http", "https"]:
             url = f"{protocol}://{domain}"
             try:
-                response = requests.get(url, timeout=5)
-                
-                # Check for outdated server headers
-                server = response.headers.get('Server', '')
-                if 'Apache/2.2' in server or 'IIS/6' in server:
-                    vulnerabilities.append(f"Outdated server detected: {server}")
-                
-                # Check if HTTPS is not enforced
-                if protocol == 'http' and response.status_code == 200:
-                    vulnerabilities.append("HTTP accessible - no HTTPS enforcement")
-                
-                # Basic XSS check
-                soup = BeautifulSoup(response.text, 'html.parser')
-                if soup.find('input', {'name': 'q'}) and not soup.find('meta', {'http-equiv': 'Content-Security-Policy'}):
-                    vulnerabilities.append("Potential XSS vulnerability - no CSP header")
-                    
-            except requests.RequestException as e:
-                st.write(f"HTTP request error for {url}: {str(e)}")
-                continue
+                r = requests.get(url, timeout=5)
+                server = r.headers.get("Server", "")
+                if "Apache/2.2" in server or "IIS/6" in server:
+                    vuln.append(f"Outdated server detected: {server}")
+                if protocol == "http" and r.status_code == 200:
+                    vuln.append("HTTP accessible - no HTTPS enforcement")
+                soup = BeautifulSoup(r.text, "html.parser")
+                if soup.find("input", {"name": "q"}) and not soup.find(
+                    "meta", {"http-equiv": "Content-Security-Policy"}
+                ):
+                    vuln.append("Potential XSS vulnerability - no CSP header")
+            except:
+                pass
     except Exception as e:
-        vulnerabilities.append(f"HTTP check error: {str(e)}")
-    
-    return vulnerabilities
+        vuln.append(f"HTTP check error: {e}")
+    return vuln
 
-# Particle Spinner HTML
-PARTICLE_SPINNER_HTML = """
+SPINNER_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <title>Particle Spinner</title>
   <style>
-    body {
-      margin: 0;
-      background: transparent;
-    }
+    body { margin: 0; background: transparent; }
     .particle-spinner {
       position: relative;
       width: 120px;
@@ -305,22 +258,16 @@ PARTICLE_SPINNER_HTML = """
       border-radius: 50%;
       animation: particle 1.5s cubic-bezier(0, 0.2, 0.8, 1) infinite;
     }
-    .particle-spinner div:nth-child(2) {
-      animation-delay: -0.75s;
-    }
+    .particle-spinner div:nth-child(2) { animation-delay: -0.75s; }
     @keyframes particle {
       0% {
-        top: 60px;
-        left: 60px;
-        width: 0;
-        height: 0;
+        top: 60px; left: 60px;
+        width: 0; height: 0;
         opacity: 1;
       }
       100% {
-        top: 0;
-        left: 0;
-        width: 120px;
-        height: 120px;
+        top: 0; left: 0;
+        width: 120px; height: 120px;
         opacity: 0;
       }
     }
@@ -335,49 +282,25 @@ PARTICLE_SPINNER_HTML = """
 </html>
 """
 
-# HTML Table Generation
 def table_to_iframe_html(df: pd.DataFrame, scan_results: Dict[str, Dict]) -> str:
-    """Convert DataFrame and scan results to HTML table."""
-    # Create a copy with original columns
-    display_df = df.copy()
-    display_df['open_ports'] = display_df['domain'].apply(
+    df = df.copy()
+    df['open_ports'] = df['domain'].apply(
         lambda x: ', '.join([p['port'] for p in scan_results.get(x, {}).get('open_ports', [])]) or 'None'
     )
-    display_df['vulnerabilities'] = display_df['domain'].apply(
+    df['vulnerabilities'] = df['domain'].apply(
         lambda x: '<br>'.join(scan_results.get(x, {}).get('vulnerabilities', [])) or 'None'
     )
-    
-    table_html = display_df.to_html(index=False, escape=False)
-    
-    # Debug: output the HTML table string
-    st.code(table_html, language="html")
-    
+    table_html = df.to_html(index=False, escape=False)
     return f"""
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
     <style>
-    body {{
-        margin: 0;
-        background: transparent;
-        font-family: sans-serif;
-        color: #333;
-    }}
-    h3 {{
-        text-align: center;
-        margin-top: 1em;
-    }}
-    table {{
-        margin: 1em auto;
-        border-collapse: collapse;
-        width: 90%;
-    }}
-    th, td {{
-        border: 1px solid #ddd;
-        padding: 8px;
-        text-align: left;
-    }}
+    body {{ margin: 0; background: transparent; font-family: sans-serif; color: #333; }}
+    h3 {{ text-align: center; margin-top: 1em; }}
+    table {{ margin: 1em auto; border-collapse: collapse; width: 90%; }}
+    th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
     </style>
 </head>
 <body>
@@ -387,74 +310,66 @@ def table_to_iframe_html(df: pd.DataFrame, scan_results: Dict[str, Dict]) -> str
 </html>
 """
 
-# Main Application Logic
 def main():
     st.markdown('<div class="main-content">', unsafe_allow_html=True)
     
-    title_ph = st.empty()
-    button_ph = st.empty()
-    
-    with title_ph:
+    # Create placeholders so we can remove them later.
+    title_placeholder = st.empty()
+    desc_placeholder = st.empty()
+    button_placeholder = st.empty()
+
+    with title_placeholder:
         st.header("CORTEX V", anchor=False)
-    
-    with button_ph:
-        if st.button("Scan Domain"):
-            title_ph.empty()
-            button_ph.empty()
-            
-            spinner_ph = st.empty()
-            with spinner_ph:
-                components.html(
-                    PARTICLE_SPINNER_HTML,
-                    height=150,
-                    scrolling=False
-                )
-            
-            # Get company data
-            response = deep_search(COMPANY_SEARCH_PROMPT)
-            if response:
-                companies = parse_json_response(response)
-                if companies:
-                    # Debug: output the parsed companies list
-                    st.write("Parsed companies:", companies)
-                    
-                    df = pd.DataFrame(companies)
-                    st.write("DataFrame preview:", df)
-                    required_cols = ['sector', 'company_name', 'domain']
-                    if not all(col in df.columns for col in required_cols):
-                        st.error("Data missing required columns")
-                    else:
-                        # Perform vulnerability scans
-                        scan_results = {}
-                        with spinner_ph:
-                            st.write("Scanning for vulnerabilities...")
-                        for domain in df['domain']:
-                            st.write(f"Scanning domain: {domain}")
-                            nmap_result = nmap_scan(domain)
-                            st.write(f"nmap result for {domain}:", nmap_result)
-                            http_vulns = check_http_vulnerabilities(domain)
-                            nmap_result['vulnerabilities'].extend(http_vulns)
-                            scan_results[domain] = nmap_result
-                        
-                        # Debug: output complete scan_results
-                        st.write("Complete scan_results:", scan_results)
-                        
-                        spinner_ph.empty()
-                        table_html = table_to_iframe_html(df, scan_results)
-                        # Debug: Check if the HTML is generated and then display it
-                        st.write("Rendering HTML table...")
-                        components.html(table_html, height=600, scrolling=True)
-                else:
-                    spinner_ph.empty()
-                    st.error("Unable to parse company data.")
-            else:
-                spinner_ph.empty()
-                st.error("Failed to fetch data. Please check your connection.")
+    with desc_placeholder:
+        st.markdown("Some introduction or instructions here, so the page doesn't look empty.")
+
+    # The scan button
+    if button_placeholder.button("Scan Domain"):
+        # Remove the title, description, and button
+        title_placeholder.empty()
+        desc_placeholder.empty()
+        button_placeholder.empty()
+
+        # Show spinner
+        spinner_placeholder = st.empty()
+        with spinner_placeholder:
+            components.html(SPINNER_HTML, height=150)
+
+        # 1) Fetch data
+        response = deep_search(COMPANY_SEARCH_PROMPT)
+        if not response:
+            st.error("No response from API.")
+            spinner_placeholder.empty()
+            return
+
+        companies = parse_json_response(response)
+        if not companies:
+            st.error("Failed to parse company JSON.")
+            spinner_placeholder.empty()
+            return
         
-    st.markdown(
-        '<div class="footer">CORTEX V | Powered by Cortex V © 2025</div>',
-        unsafe_allow_html=True
-    )
+        df = pd.DataFrame(companies)
+        if not all(col in df.columns for col in ["sector","company_name","domain"]):
+            st.error("Missing required columns in response.")
+            spinner_placeholder.empty()
+            return
+
+        # 2) Perform scanning
+        scan_results = {}
+        for domain in df['domain']:
+            nmap_info = nmap_scan(domain)
+            http_info = check_http_vulnerabilities(domain)
+            nmap_info['vulnerabilities'].extend(http_info)
+            scan_results[domain] = nmap_info
+
+        # Remove spinner
+        spinner_placeholder.empty()
+
+        # 3) Show final results
+        final_html = table_to_iframe_html(df, scan_results)
+        st.components.v1.html(final_html, height=600, scrolling=True)
+
+    st.markdown('<div class="footer">CORTEX V | Powered by Cortex V © 2025</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
